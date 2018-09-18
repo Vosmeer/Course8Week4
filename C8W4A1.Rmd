@@ -1,0 +1,173 @@
+---
+title: "Categorizing weightlifting exercises"
+author: "Michel Mariën"
+date: "18 september 2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+#### Introduction
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral 
+Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering 
+the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond
+to common mistakes. Participants were supervised by an experienced weight lifter to make sure the execution complied to the manner they were supposed to simulate. The exercises were performed by six 
+male participants aged between 20-28 years, with little weight lifting experience. 
+
+The goal of your project is to predict the manner in which they did the exercise. This is the 
+"classe" variable in the training set. You may use any of the other variables to predict with. You 
+should create a report describing how you built your model, how you used cross validation, what you 
+think the expected out of sample error is, and why you made the choices you did. You will also use 
+your prediction model to predict 20 different test cases.
+
+#### Setup
+
+```{r setup, include=TRUE,echo = TRUE,warning=FALSE,message=FALSE}
+
+library(ggplot2)
+library(GGally)
+library(reshape2)
+library(AppliedPredictiveModeling)
+library(dplyr)
+library(MASS)
+library(caret)
+library(Hmisc)
+library(ElemStatLearn)
+library(pgmm)
+library(rpart)
+library(rattle)
+library(randomForest)
+library(gridExtra)
+library(devtools)
+library(janitor)
+library(tidyr)
+
+setwd("C:\\_Data\\Mijn Documenten\\R\\Scripts Coursera\\Course 8 - Week 4")
+
+dataset_train<-read.csv("pml-training.csv",dec=".",fill=TRUE,stringsAsFactors = FALSE)
+dataset_test<-read.csv("pml-testing.csv",dec=".",fill=TRUE,stringsAsFactors = FALSE)
+
+data_train<-dataset_train
+data_test<-dataset_test
+
+```
+
+#### Tidying dataset
+
+Before any attempt is made to create a machine learning-model, the data is first cleaned. To make
+sure all data is numeric after import into R, all columns are converted to numeric, the categories 
+and names are converted to factor and the cvtd-columns is converted to POSIXct. 
+
+After that, all columns containing "NA" or are empty are removed from the test and training set.
+
+```{r tidying, include=TRUE,echo = TRUE,warning=FALSE,message=FALSE}
+
+  ## Kolommen naar juiste klasses zetten
+    data_train[,-c(2:6,160)] <- sapply( data_train[,-c(2:6,160)], as.numeric )
+    data_train[,2] <- as.factor(data_train[,2])
+    data_train[,6]<- as.factor(data_train[,6])
+    data_train[,160]<- as.factor(data_train[,160])
+    data_train[,5]<- as.POSIXct(data_train[,5],format="%d/%m/%Y %H:%M",tz="GMT")  
+  
+    data_test[,-c(2:6,160)] <- sapply( data_test[,-c(2:6,160)], as.numeric )
+    data_test[,2] <- as.factor(data_test[,2])
+    data_test[,6]<- as.factor(data_test[,6])
+    data_test[,160]<- as.factor(data_test[,160])
+    data_test[,5]<- as.POSIXct(data_test[,5],format="%d/%m/%Y %H:%M",tz="GMT")    
+  
+    hh<-lapply(data_train,class)
+    table(unlist(hh))
+  
+  ## Verwijderen kolommen met NA-waardes 
+    Na_rows<-as.data.frame(sapply(data_train, function(x) sum(is.na(x))))
+    Na_rows$Namen<-rownames(Na_rows)
+    Na_rows<-Na_rows[Na_rows[,1]==0,]
+       
+    data_tr<-subset(data_train,select=Na_rows[,2])
+    data_te<-subset(data_test,select=Na_rows[c(1:59),2])
+    data_te<-data_te%>%mutate(ToPredict=data_test[,160])
+    
+    data_tr<-data_tr[,-c(1:5)]
+    data_te<-data_te[,-c(1:5)]  
+```    
+
+#### Exploratory analysis
+
+The dataset with 54 variables is to big to visualize. To get a sense of the kind of data we are
+working with, the describe function is applied to the data. The output is explicitly excluded from
+this document since it contains a pretty big table. 
+
+```{r exploratory, include=TRUE,echo = TRUE, results='hide',warning=FALSE,message=FALSE}
+
+   describe(data_tr)
+
+```
+
+#### Training
+
+For selecting the best possible model to classify the excersises, 4 different models will be
+trained and, depending on their accuracy and Kappa-values, the best will be chosen.
+
+```{r training, include=TRUE,echo = TRUE,warning=FALSE,cache=TRUE,message=FALSE,fig.width=10}
+    
+  ## Create training dataset
+    set.seed(555)
+    inTrain = createDataPartition(data_tr$classe, p = 0.7,list=FALSE)
+    training = data_tr[inTrain,]
+    testing = data_tr[-inTrain,]
+
+    fitControl <- trainControl(method = "cv", number=3)
+
+  ## Decision tree
+    Model_dtr<-train(classe~.,method="rpart",data=training,trControl=fitControl)
+    Model_dtr$finalModel
+  ## Random forest    
+    Model_rfo<-train(classe~.,method="rf",data=training,trControl=fitControl)
+    Model_rfo$finalModel
+  ## Linear discriminat analysis
+    Model_lda<-train(classe~.,method="lda",data=training,trControl=fitControl)
+    Model_lda$finalModel
+  ## kNN-model   
+    Model_knn<-train(classe~.,method="knn",data=training,trControl=fitControl)
+    Model_knn$finalModel
+
+  ## Group results 
+    Model_results <- resamples(list(DTREE=Model_dtr, LDA=Model_lda, KNN=Model_knn, RFOREST=Model_rfo))   
+
+    summary(Model_results)
+    
+    scales<-list(x=list(relation="free"),y=list(relation="free"))
+    bwplot(Model_results,scales=scales)
+
+  ## Predict on test-data
+    Model_dtr_predict<-predict(Model_dtr, newdata=testing[,-60])
+    Model_lda_predict<-predict(Model_lda, newdata=testing[,-60])    
+    Model_knn_predict<-predict(Model_knn, newdata=testing[,-60])   
+    Model_rfo_predict<-predict(Model_rfo, newdata=testing[,-60])    
+    
+    cfm_dtr<-confusionMatrix(testing$classe, Model_dtr_predict)
+    cfm_lda<-confusionMatrix(testing$classe, Model_lda_predict)
+    cfm_knn<-confusionMatrix(testing$classe, Model_knn_predict)
+    cfm_rfo<-confusionMatrix(testing$classe, Model_rfo_predict)
+
+    matrix_accu<-rbind(cfm_dtr$overall,cfm_lda$overall,cfm_knn$overall,cfm_rfo$overall)
+    rownames(matrix_accu)<-c("Tree","LDA","KNN","RFO")
+    matrix_accu 
+```    
+ 
+From the code above, one can see that the random forest-model has the highest accuracy (0.997) and
+Kappa-value (0.997). For the final prediction, the "Model_rfo_predict" will be used
+
+#### Prediction on validation-data 
+
+Applying our Random Forest-model on the validation-set
+   
+```{r prediction, include=TRUE,echo = TRUE,warning=FALSE,message=FALSE}    
+    Model_rfo_predict_final<-predict(Model_rfo, newdata=data_test)
+    Model_rfo_predict_final
+ 
+```
+
+
