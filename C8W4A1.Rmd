@@ -3,8 +3,8 @@ title: "Categorizing weightlifting exercises"
 author: "Michel Mariën"
 date: "18 september 2018"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 #### Introduction
 
@@ -44,7 +44,7 @@ library(devtools)
 library(janitor)
 library(tidyr)
 
-setwd("C:\\_Data\\Mijn Documenten\\R\\Scripts Coursera\\Course 8 - Week 4")
+setwd("C:\\_Data\\Mijn Documenten\\R\\Data Science specialization\\Scripts Courses\\Course 8 - Week 4")
 
 dataset_train<-read.csv("pml-training.csv",dec=".",fill=TRUE,stringsAsFactors = FALSE)
 dataset_test<-read.csv("pml-testing.csv",dec=".",fill=TRUE,stringsAsFactors = FALSE)
@@ -155,10 +155,15 @@ trained and, depending on their accuracy and Kappa-values, the best will be chos
     matrix_accu<-rbind(cfm_dtr$overall,cfm_lda$overall,cfm_knn$overall,cfm_rfo$overall)
     rownames(matrix_accu)<-c("Tree","LDA","KNN","RFO")
     matrix_accu 
+    
+    OoS_error<-mean(testing$classe != Model_rfo_predict) 
+    OoS_error
 ```    
  
 From the code above, one can see that the random forest-model has the highest accuracy (0.997) and
-Kappa-value (0.997). For the final prediction, the "Model_rfo_predict" will be used
+Kappa-value (0.997). The Out-of-Sample error for the random forest-model (OoS_error) is 0.0027 which
+is very low and should no wrong classifications on the validation set. 
+This means that for the final prediction, the "Model_rfo_predict" will be used
 
 #### Prediction on validation-data 
 
